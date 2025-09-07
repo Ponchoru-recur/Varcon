@@ -1,0 +1,1 @@
+  -LC:/Users/Sam/Desktop/Varcon/lib  "C:/VulkanSDK/1.4.321.1/Lib/vulkan-1.lib" -lSDL3 -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 

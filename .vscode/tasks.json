@@ -1,0 +1,23 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build SDL3/VULKAN practice",
+            "type": "shell",
+            "command": "cd C:/Users/Sam/Desktop/Varcon/build && mingw32-make -j12",
+            "args": [
+
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

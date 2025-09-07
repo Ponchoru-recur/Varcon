@@ -1,0 +1,7 @@
+BasedOnStyle: Google
+IndentWidth: 4
+BreakBeforeBraces: Attach
+AllowShortBlocksOnASingleLine: false
+BinPackArguments: true
+ColumnLimit: 0
+SortIncludes: false
