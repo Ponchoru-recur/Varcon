@@ -2,6 +2,10 @@
 
 build/
 
-TEST
+TEST/
 
 .clang-format
+
+.gitignore
+
+.compile.bat

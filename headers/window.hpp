@@ -1,45 +1,26 @@
-// Header guard to prevent multiple definitions
-#ifndef WINDOW_HPP
-#define WINDOW_HPP
+#pragma once
 
-// Libs used
 #include <iostream>
-#include <format>
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
 
-// // Helper : check VkResult
-// static bool vk_ok(VkResult r, const char* where) {
-//     if (r == VK_SUCCESS) return true;
-//     std::fprintf(stderr, "[vulkan] %s failed with %d\n", where, (int)r);
-//     return false;
-// }
+#include <debug.hpp>
 
-// SDL3 CALLBACK INTERFACE
+namespace Game {
 
-namespace lve {
-class LveWindow {
+class Window {
    public:
-    LveWindow(int width, int height, const char* name);
-    ~LveWindow();
+    Window(int width, int height, const char *title);
 
-    // From youtube : Tells compiler to complain if more than one
-    // instance is made or has a copy of the same instance
-    LveWindow(const LveWindow&) = delete;
-    LveWindow& operator=(const LveWindow&) = delete;
+    void nothing() {};
 
-    void createWindowSurface(VkInstance instance, VkSurfaceKHR* surface);
+    ~Window();
 
    private:
-    void initWindow();
-    const int width;
-    const int height;
-    const char* windowName;
-    SDL_Window* window = nullptr;
-    // VkInstance vkInstance = VK_NULL_HANDLE;
-    // VkSurfaceKHR surface = VK_NULL_HANDLE;
+    SDL_Window *window = nullptr;
+    VkInstance instance = VK_NULL_HANDLE;
 };
-}  // namespace lve
 
-#endif  // WINDOW_HPP
+}  // namespace Game
