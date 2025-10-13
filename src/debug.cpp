@@ -3,6 +3,8 @@
 #include <iostream>
 #include <cstring>
 
+// TODO: Please implement a way to find which GPU is best for Vulkan
+
 namespace DEBUG {
 
 #ifndef NDEBUG
@@ -11,9 +13,8 @@ const bool enableValidationLayers = true;
 const bool enableValidationLayers = false;
 #endif
 
-const std::vector<const char *> validationLayers = {
-    "VK_LAYER_KHRONOS_validation"};
+// Queue family is for texture and basically commands to tell GPU what to do next in order.
+// e.g. Uploading textures, Rendering
+// Each family only has a subset of commands
 
-
-
-}
+}  // namespace DEBUG

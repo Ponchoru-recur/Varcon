@@ -35,7 +35,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int /*argc*/, char * /*argv*/[]) {
 
     std::clog << "[ START ]\n";
     try {
-        *appstate = new std::unique_ptr<Game::Window>(std::make_unique<Game::Window>(800, 600, "Main Window"));
+        *appstate = new Game::Window(800, 600, "Main Window");
+        Game::Window *window = static_cast<Game::Window *>(*appstate);
+        window->createPhysicalDevice();
+        window->createLogicalDevice();
     } catch (const std::runtime_error &e) {
         std::cerr << "[ Runtime ] " << e.what() << std::endl;
         return SDL_APP_FAILURE;
@@ -50,9 +53,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int /*argc*/, char * /*argv*/[]) {
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     // Take the pointer of the std::unique_ptr<Game::Window> then dereference it
     // then bind it to the g_window using & so it wont make a copy
-    auto &g_window = *static_cast<std::unique_ptr<Game::Window> *>(appstate);
-    g_window->nothing();
-
+    Game::Window *window = static_cast<Game::Window *>(appstate);
+    window->nothing();
     switch (event->type) {
         case SDL_EVENT_QUIT:
 
@@ -80,8 +82,8 @@ const float TargetFPS = 144.0f;
 const float TargetFrameTIme = (1000.0f / TargetFPS);
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
-    auto &g_window = *static_cast<std::unique_ptr<Game::Window> *>(appstate);
-    g_window->nothing();
+    Game::Window *window = static_cast<Game::Window *>(appstate);
+    window->nothing();
     // Take first time frame
     auto StartFrame = std::chrono::steady_clock::now();
 
@@ -101,6 +103,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 }
 
 void SDL_AppQuit(void *appstate, SDL_AppResult /*result*/) {
-    delete static_cast<std::unique_ptr<Game::Window> *>(appstate);
+    delete static_cast<Game::Window *>(appstate);
     std::clog << "[ END ] Application closed!.\n";
 }
