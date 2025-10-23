@@ -121,8 +121,60 @@ void Window::createLogicalDevice() {
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
+// This is fucking insane i have no idea what this are do.
+void Window::createImageViews() {
+    swapChainImageViews.resize(swapChainImages.size());
+
+    for (size_t i = 0; i < swapChainImages.size(); i++) {
+        VkImageViewCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        createInfo.image = swapChainImages[i];
+        // The viewType and format fields specify how the image data should be interpreted. The viewType parameter allows you to treat images as 1D textures, 2D textures, 3D textures and cube maps.
+        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        createInfo.format = swapChainImageFormat;
+        // The components field allows you to swizzle the color channels around. For example, you can map all of the channels to the red channel for a monochrome texture. You can also map constant values of 0 and 1 to a channel. In our case we'll stick to the default mapping.
+        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        // The subresourceRange field describes what the image's purpose is and which part of the image should be accessed. Our images will be used as color targets without any mipmapping levels or multiple layers.
+        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        createInfo.subresourceRange.baseMipLevel = 0;
+        createInfo.subresourceRange.levelCount = 1;
+        createInfo.subresourceRange.baseArrayLayer = 0;
+        createInfo.subresourceRange.layerCount = 1;
+
+        if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+            throw std::runtime_error("[ Error ] Failed to create image views.\n");
+        }
+    }
+}
+
+void Window::createGraphicsPipeline() {
+    auto vertexShaderCode = readFile("../shaders/shader.vert.spv");
+    auto fragmentShaderCode = readFile("../shaders/shader.frag.spv");
+
+    VkShaderModule vertShader = createShaderModule(vertexShaderCode);
+    VkShaderModule fragShader = createShaderModule(fragmentShaderCode);
+
+    
+}
 
 Window::~Window() {
+    for (auto& imageView : swapChainImageViews) {
+        if (imageView == VK_NULL_HANDLE) {
+            std::cerr << "[ Warning ] imageView is already destroyed.\n";
+        } else {
+            vkDestroyImageView(device, imageView, nullptr);
+        }
+    }
+
+    if (swapChain == VK_NULL_HANDLE) {
+        std::cerr << "[ Warning ] swapChain var has already been destroyed!\n";
+    } else {
+        vkDestroySwapchainKHR(device, swapChain, nullptr);
+    }
+
     // Device is destroyed first because it relies on the instance
     if (device == VK_NULL_HANDLE) {
         std::cerr << "[ Warning ] device var has already been destroyed!\n";
@@ -154,6 +206,27 @@ Window::~Window() {
 }
 
 // PRIVATE FUNCTIONS
+std::vector<char> Window::readFile(const std::string& filename) {
+    // ate means start at the end of the file, Binary means read it in binary to prevent corruption because of certain special characters
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open()) {
+        throw std::runtime_error("[ HELPER ERROR ] Failed to open file!");
+    } else {
+        std::clog << "[ Notice ] File loaded : " << filename << "\n";
+    }
+
+    // Gets the size of the file by asking where the cursor is.
+    size_t fileSize = static_cast<size_t>(file.tellg());
+    std::vector<char> buffer(fileSize);
+    // Go to the top of the file and start reading all of the bytes at once
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+    file.close();
+
+    return buffer;
+}
+
 QueueFamilyIndices Window::findQueueFamilies(VkPhysicalDevice p_device) {
     QueueFamilyIndices indices;
 
@@ -237,7 +310,7 @@ SwapChainSupportDetails Window::querySwapChainSupport(VkPhysicalDevice p_device)
         details.formats.resize(formatCount);
         vkGetPhysicalDeviceSurfaceFormatsKHR(p_device, surface, &formatCount, details.formats.data());
     } else {
-        throw std::runtime_error("[ Error ] Could not get surface formats");
+        throw std::runtime_error("[ Error ] Could not get surface formats.\n");
     }
 
     uint32_t presentModeCount;
@@ -246,6 +319,8 @@ SwapChainSupportDetails Window::querySwapChainSupport(VkPhysicalDevice p_device)
     if (presentModeCount != 0) {
         details.presentMode.resize(presentModeCount);
         vkGetPhysicalDeviceSurfacePresentModesKHR(p_device, surface, &presentModeCount, details.presentMode.data());
+    } else {
+        throw std::runtime_error("[ Error ] Could not get surface present modes.\n");
     }
 
     return details;
@@ -293,6 +368,77 @@ VkExtent2D Window::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities
 
         return actualExtent;
     }
+}
+
+void Window::createSwapChain() {
+    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+
+    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+    VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentMode);
+    VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
+
+    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+
+    if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
+        imageCount = swapChainSupport.capabilities.maxImageCount;
+    }
+
+    swapChainImageFormat = surfaceFormat.format;
+    swapChainExtent = extent;
+
+    VkSwapchainCreateInfoKHR createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    createInfo.surface = surface;
+    createInfo.minImageCount = imageCount;
+    createInfo.imageFormat = surfaceFormat.format;
+    createInfo.imageColorSpace = surfaceFormat.colorSpace;
+    createInfo.imageExtent = extent;
+    createInfo.imageArrayLayers = 1;
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
+
+    if (indices.graphicsFamily != indices.presentFamily) {
+        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        createInfo.queueFamilyIndexCount = 2;
+        createInfo.pQueueFamilyIndices = queueFamilyIndices;
+    } else {
+        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        createInfo.queueFamilyIndexCount = 0;
+        createInfo.pQueueFamilyIndices = nullptr;
+    }
+
+    createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
+    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    createInfo.presentMode = presentMode;
+    createInfo.clipped = VK_TRUE;
+    createInfo.oldSwapchain = VK_NULL_HANDLE;
+    // Finally create the swapchain
+    if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
+        throw std::runtime_error("[ Error ] Failed to create swapchain.\n");
+    }
+
+    vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+    swapChainImages.resize(imageCount);
+    vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
+}
+
+VkShaderModule Window::createShaderModule(const std::vector<char>& code) {
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        throw std::runtime_error("[ Error ] Shader module could not be created!\n");
+    } else {
+        std::clog << "[ Notice ] Shader module successfully created!\n"
+                  << "\n";
+    }
+
+    return shaderModule;
 }
 
 }  // namespace Game

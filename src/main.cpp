@@ -27,8 +27,8 @@ extern "C" {
 #include <luajit/lualib.h>
 }
 
-SDL_AppResult SDL_AppInit(void **appstate, int /*argc*/, char * /*argv*/[]) {
-    lua_State *L = luaL_newstate();
+SDL_AppResult SDL_AppInit(void** appstate, int /*argc*/, char* /*argv*/[]) {
+    lua_State* L = luaL_newstate();
     luaL_openlibs(L);
     luaL_dostring(L, "print('Hello from LuaJIT!')");
     lua_close(L);
@@ -36,13 +36,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int /*argc*/, char * /*argv*/[]) {
     std::clog << "[ START ]\n";
     try {
         *appstate = new Game::Window(800, 600, "Main Window");
-        Game::Window *window = static_cast<Game::Window *>(*appstate);
+        Game::Window* window = static_cast<Game::Window*>(*appstate);
         window->createPhysicalDevice();
         window->createLogicalDevice();
-    } catch (const std::runtime_error &e) {
+        window->createSwapChain();
+        window->createGraphicsPipeline();
+    } catch (const std::runtime_error& e) {
         std::cerr << "[ Runtime ] " << e.what() << std::endl;
         return SDL_APP_FAILURE;
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         std::cerr << "[ Exception ] << " << e.what() << std::endl;
         return SDL_APP_FAILURE;
     }
@@ -50,10 +52,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int /*argc*/, char * /*argv*/[]) {
     return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
+SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     // Take the pointer of the std::unique_ptr<Game::Window> then dereference it
     // then bind it to the g_window using & so it wont make a copy
-    Game::Window *window = static_cast<Game::Window *>(appstate);
+    Game::Window* window = static_cast<Game::Window*>(appstate);
     window->nothing();
     switch (event->type) {
         case SDL_EVENT_QUIT:
@@ -81,8 +83,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 const float TargetFPS = 144.0f;
 const float TargetFrameTIme = (1000.0f / TargetFPS);
 
-SDL_AppResult SDL_AppIterate(void *appstate) {
-    Game::Window *window = static_cast<Game::Window *>(appstate);
+SDL_AppResult SDL_AppIterate(void* appstate) {
+    Game::Window* window = static_cast<Game::Window*>(appstate);
     window->nothing();
     // Take first time frame
     auto StartFrame = std::chrono::steady_clock::now();
@@ -102,7 +104,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void *appstate, SDL_AppResult /*result*/) {
-    delete static_cast<Game::Window *>(appstate);
+void SDL_AppQuit(void* appstate, SDL_AppResult /*result*/) {
+    delete static_cast<Game::Window*>(appstate);
     std::clog << "[ END ] Application closed!.\n";
 }

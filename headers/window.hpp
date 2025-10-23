@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <iostream>
 #include <optional>
+#include <fstream>
+#include <vector>
 #include <limits>
 #include <set>
 
@@ -10,7 +12,7 @@
 #include <SDL3/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
 
-#include <debug.hpp>
+#include "debug.hpp"
 
 // Create Physical device.
 // Find Queue Families (Subset of families that has unique set of instructions)
@@ -53,6 +55,9 @@ class Window {
 
     void createPhysicalDevice();
     void createLogicalDevice();
+    void createSwapChain();
+    void createImageViews();
+    void createGraphicsPipeline();
 
     void nothing() {};
 
@@ -62,13 +67,15 @@ class Window {
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
     bool isDeviceSuitable(VkPhysicalDevice device);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+    std::vector<char> readFile(const std::string& filename);
+    VkShaderModule createShaderModule(const std::vector<char>& code);
 
     // Helper functions for SwapChain
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);                               // Responsible if it is supported for your GPU
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);  // Responsible for colors
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);   // Responsible for putting images on the screen
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);                            // Responsible screen resolution
-    void createSwapChain();                                                                               // Literal SwapChain
+                                                                                                          // Literal SwapChain
 
     // Window SDL3 and instance of Vulkan
     SDL_Window* window = nullptr;
@@ -86,6 +93,15 @@ class Window {
     // Swap chain
     const std::vector<const char*> deviceExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+    VkSwapchainKHR swapChain = VK_NULL_HANDLE;
+    std::vector<VkImage> swapChainImages;
+
+    // Variable with the purpose of just storing some value to it.
+    VkFormat swapChainImageFormat;
+    VkExtent2D swapChainExtent;
+
+    std::vector<VkImageView> swapChainImageViews;
 };
 
 }  // namespace Game
