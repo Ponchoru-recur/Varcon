@@ -40,6 +40,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int /*argc*/, char* /*argv*/[]) {
         window->createPhysicalDevice();
         window->createLogicalDevice();
         window->createSwapChain();
+        window->createImageViews();
+        window->createRenderPass();
         window->createGraphicsPipeline();
     } catch (const std::runtime_error& e) {
         std::cerr << "[ Runtime ] " << e.what() << std::endl;

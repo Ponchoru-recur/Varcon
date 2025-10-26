@@ -31,6 +31,8 @@
     e.g. Destroying an instance first before Queue's or Logical device (which rely on instance)
 */
 
+// Put validation layer inside debug.hpp and fuck you
+
 namespace Game {
 // Queue Families
 struct QueueFamilyIndices {
@@ -57,6 +59,7 @@ class Window {
     void createLogicalDevice();
     void createSwapChain();
     void createImageViews();
+    void createRenderPass();  // Tell vulkan all the attachments that's going to be used.
     void createGraphicsPipeline();
 
     void nothing() {};
@@ -102,6 +105,16 @@ class Window {
     VkExtent2D swapChainExtent;
 
     std::vector<VkImageView> swapChainImageViews;
+
+    // Blank Pipeline layout
+    VkRenderPass renderPass;
+    VkPipelineLayout pipelineLayout;
+
+    VkPipeline graphicsPipeline;
+
+    std::vector<const char*> extensions;
+    const char* const* sdlExtensions;
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
 };
 
 }  // namespace Game

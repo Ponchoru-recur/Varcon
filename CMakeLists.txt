@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # find vulkan package and check if works
+set(Vulkan_INCLUDE_DIR "C:/VulkanSDK/1.4.328.1/Include")
+set(Vulkan_LIBRARY "C:/VulkanSDK/1.4.328.1/Lib/vulkan-1.lib")
 find_package(Vulkan REQUIRED)
 
 # find SDL3

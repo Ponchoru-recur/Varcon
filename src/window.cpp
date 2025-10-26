@@ -3,12 +3,22 @@
 namespace Game {
 
 Window::Window(int width, int height, const char* title) {
-    window = SDL_CreateWindow(title, width, height, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
-    if (!window) {
-        throw std::runtime_error("[ Error ] Failed to initialize Window!\n");
+    SDL_Init(SDL_INIT_VIDEO);
+    // ---- Load Vulkan ----
+    if (!SDL_Vulkan_LoadLibrary(nullptr)) {
+        throw std::runtime_error("[ Error ] Failed to load Vulkan library : " + std::string(SDL_GetError()));
+    } else {
+        std::clog << "[ Notice ] Vulkan library is loaded.\n";
     }
 
-    // Tell instance information about our application
+    SDL_SetHint(SDL_HINT_RENDER_VULKAN_DEBUG, "1");
+    // Create SDL window with Vulkan support
+    window = SDL_CreateWindow(title, width, height, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+    if (!window) {
+        throw std::runtime_error("[ Error ] Failed to initialize Window : " + std::string(SDL_GetError()));
+    }
+
+    // ---- Vulkan Application Info ----
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Hello Triangle";
@@ -17,38 +27,96 @@ Window::Window(int width, int height, const char* title) {
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.apiVersion = VK_API_VERSION_1_0;
 
-    // Get Vulkan instance extensions (needed for drivers)
-    Uint32 sdlExtensionCount = 0;
-    const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
-
+    // ---- Get Required Extensions from SDL ----
+    uint32_t sdlExtensionCount = 0;  // Should not free the array
+    sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
     if (!sdlExtensions || sdlExtensionCount == 0) {
-        throw std::runtime_error("[ Error ] Failed to count and get instance extensions from SDL.\n");
+        throw std::runtime_error("[ Error ] Failed to get Vulkan extensions from SDL.\n");
     }
 
-    // Create information that the instance of Vulkan can use (Can also be used to enable debugging tools)
+    // This shit is freed when the function ends
+    extensions.resize(sdlExtensionCount);
+    extensions.reserve(sdlExtensionCount + 1);
+    for (Uint32 i = 0; i < sdlExtensionCount; ++i) {
+        extensions[i] = (sdlExtensions[i]);
+    }
+
+    // If we enable validation layers, make sure debug utils extension is present on our list
+    if (DEBUG::enableValidationLayers) {
+        // avoid duplicate entries
+        bool found = false;
+        for (auto e : extensions)
+            if (strcmp(e, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
+                found = true;
+                break;
+            }
+        if (!found) extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
+    // ---- Vulkan Instance Info ----
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pNext = nullptr;
     createInfo.pApplicationInfo = &appInfo;
-    createInfo.enabledExtensionCount = sdlExtensionCount;
-    createInfo.ppEnabledExtensionNames = sdlExtensions;
-    createInfo.enabledLayerCount = 0;
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    createInfo.ppEnabledExtensionNames = extensions.data();
 
-    // Check for Vulkan Support
-    if (!SDL_Vulkan_LoadLibrary(nullptr)) {
-        throw std::runtime_error("[ Error ] Failed to load Vulkan library!");
+    // Validation layers: use DEBUG::validationLayers which is global/static
+    if (DEBUG::enableValidationLayers && DEBUG::checkValidationLayerSupport()) {
+        createInfo.enabledLayerCount = static_cast<uint32_t>(DEBUG::validationLayers.size());
+        createInfo.ppEnabledLayerNames = DEBUG::validationLayers.data();
+    } else {
+        createInfo.enabledLayerCount = 0;
+        createInfo.ppEnabledLayerNames = nullptr;
+        createInfo.pNext = nullptr;
     }
 
-    // Create an instance of Vulkan
-    VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ Error ] Vulkan Instance Failed!\n");
+    // Optional: add debug messenger create info to pNext to catch instance-time messages
+
+    if (DEBUG::enableValidationLayers) {
+        DEBUG::populateDebugMessengerCreateInfo(debugCreateInfo);
+        // createInfo.pNext = &debugCreateInfo;
+    } else {
+        createInfo.pNext = nullptr;
     }
 
+    // debug print (helps verify everything is valid)
+    std::cout << "Creating instance with " << createInfo.enabledExtensionCount << " extensions and "
+              << createInfo.enabledLayerCount << " validation layers\n";
+    for (uint32_t i = 0; i < createInfo.enabledExtensionCount; ++i) {
+        std::cout << "  ext " << i << " : " << createInfo.ppEnabledExtensionNames[i] << '\n';
+    }
+    if (createInfo.enabledLayerCount > 0) {
+        for (uint32_t i = 0; i < createInfo.enabledLayerCount; ++i) {
+            std::cout << "  layer " << i << " : " << createInfo.ppEnabledLayerNames[i] << '\n';
+        }
+    }
+
+    // std::cout << "appInfo.pApplicationName = " << appInfo.pApplicationName << std::endl;
+    // std::cout << "createInfo.ppEnabledExtensionNames = " << (void*)createInfo.ppEnabledExtensionNames << std::endl;
+    // std::cout << "createInfo.ppEnabledLayerNames = " << (void*)createInfo.ppEnabledLayerNames << std::endl;
+    // std::cout << "createInfo.pNext = " << (void*)createInfo.pNext << std::endl;
+
+    // ---- Create Vulkan Instance ----
+    VkResult r = vkCreateInstance(&createInfo, nullptr, &instance);
+    if (r != VK_SUCCESS) {
+        throw std::runtime_error("[ Error ] Failed to create Vulkan instance!");
+    }
+
+    VkDebugUtilsMessengerCreateInfoEXT messengerInfo{};
+    if (DEBUG::enableValidationLayers) {
+        DEBUG::populateDebugMessengerCreateInfo(messengerInfo);
+        if (DEBUG::CreateDebugUtilsMessengerEXT(instance, &messengerInfo, nullptr, &DEBUG::debugMessenger) != VK_SUCCESS) {
+            std::cerr << "[ Warning ] Failed to set up debug messenger (post-instance).\n";
+        }
+    }
+
+    // ---- Create Surface ----
     if (!SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface)) {
-        throw std::runtime_error("[ Error ] SDL3/VULKAN could not create Surface.\n");
+        throw std::runtime_error("[ Error ] SDL/Vulkan failed to create surface!");
     }
 
-    std::clog << "[ Notice ] Window Created!\n";
+    std::clog << "[ Notice ] Window and Vulkan instance created successfully!\n";
 }
 
 void Window::createPhysicalDevice() {
@@ -72,8 +140,6 @@ void Window::createPhysicalDevice() {
 
     if (physicalDevice == VK_NULL_HANDLE) {
         throw std::runtime_error("[ Error ] Device has failed to find a suitable GPU.\n");
-    } else {
-        std::clog << "[ Notice ] Physical device picked : " << physicalDevice << "\n";
     }
 }
 
@@ -150,56 +216,225 @@ void Window::createImageViews() {
     }
 }
 
+void Window::createRenderPass() {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = swapChainImageFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;  // Apply to color and depth data
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;  // Apply to stencil data
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+
+    if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+        throw std::runtime_error("[ Error ] Failed to create renderpass.\n");
+    }
+}
+
 void Window::createGraphicsPipeline() {
+    // Reads the file in bytes and returns as a vector of char
     auto vertexShaderCode = readFile("../shaders/shader.vert.spv");
     auto fragmentShaderCode = readFile("../shaders/shader.frag.spv");
 
+    // Reads the char form of the shaders and put a "wrapper" for Vulkan to use later on the CPU side.
     VkShaderModule vertShader = createShaderModule(vertexShaderCode);
     VkShaderModule fragShader = createShaderModule(fragmentShaderCode);
 
-    
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = vertShader;
+    vertShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragShaderCreateInfo{};
+    fragShaderCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderCreateInfo.module = fragShader;
+    fragShaderCreateInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderCreateInfo};
+
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 0;
+    vertexInputInfo.pVertexBindingDescriptions = nullptr;
+    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    // State how much area can objects be seen
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)swapChainExtent.width;
+    viewport.height = (float)swapChainExtent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    // State how much you want to cut a part of the screen
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapChainExtent;
+
+    // std::vector<VkDynamicState> dynamicStates = {
+    //     VK_DYNAMIC_STATE_VIEWPORT,
+    //     VK_DYNAMIC_STATE_SCISSOR};
+
+    // VkPipelineDynamicStateCreateInfo dynamicState{};
+    // dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    // dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    // dynamicState.pDynamicStates = dynamicStates.data();
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.pViewports = &viewport;
+    viewportState.scissorCount = 1;
+    viewportState.pScissors = &scissor;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;  // Makes frame buffer have no output (prob useless)
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.depthBiasEnable = VK_FALSE;
+    rasterizer.depthBiasConstantFactor = 0.0f;
+    rasterizer.depthBiasClamp = 0.0f;
+    rasterizer.depthBiasSlopeFactor = 0.0f;
+
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisampling.minSampleShading = 1.0f;
+    multisampling.pSampleMask = nullptr;
+    multisampling.alphaToCoverageEnable = VK_FALSE;
+    multisampling.alphaToOneEnable = VK_FALSE;
+
+    // VkPipelineDepthStencilStateCreateInfo we dont need dept fields yet
+
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    colorBlendAttachment.blendEnable = VK_FALSE;
+    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.logicOp = VK_LOGIC_OP_COPY;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.blendConstants[0] = 0.0f;
+    colorBlending.blendConstants[1] = 0.0f;
+    colorBlending.blendConstants[2] = 0.0f;
+    colorBlending.blendConstants[3] = 0.0f;
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.pNext = nullptr;
+    pipelineLayoutInfo.flags = 0;
+    pipelineLayoutInfo.setLayoutCount = 0;
+    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("[ Error ] failed to create pipeline layout.\n");
+    }
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = nullptr;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    // pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = pipelineLayout;
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+    pipelineInfo.basePipelineIndex = -1;
+
+    if (device == VK_NULL_HANDLE) {
+        std::cerr << "ERROR: device is VK_NULL_HANDLE\n";
+    }
+    if (renderPass == VK_NULL_HANDLE) {
+        std::cerr << "ERROR: renderPass is VK_NULL_HANDLE\n";
+    }
+    if (pipelineLayout == VK_NULL_HANDLE) {
+        std::cerr << "ERROR: pipelineLayout is VK_NULL_HANDLE\n";
+    }
+    if (vertShader == VK_NULL_HANDLE) {
+        std::cerr << "ERROR: vertShader is VK_NULL_HANDLE\n";
+    }
+    if (fragShader == VK_NULL_HANDLE) {
+        std::cerr << "ERROR: fragShader is VK_NULL_HANDLE\n";
+    }
+
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+        throw std::runtime_error("[ Error ] Failed to create graphics pipeline.\n");
+    }
+
+    // Destroy shader modules at the end.
+    vkDestroyShaderModule(device, vertShader, nullptr);
+    vkDestroyShaderModule(device, fragShader, nullptr);
+
+    std::clog << "[ Notice ] Graphics Pipeline has been created!\n";
 }
 
 Window::~Window() {
+    vkDestroyPipeline(device, graphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+    vkDestroyRenderPass(device, renderPass, nullptr);
     for (auto& imageView : swapChainImageViews) {
-        if (imageView == VK_NULL_HANDLE) {
-            std::cerr << "[ Warning ] imageView is already destroyed.\n";
-        } else {
-            vkDestroyImageView(device, imageView, nullptr);
+        vkDestroyImageView(device, imageView, nullptr);
+    }
+    vkDestroySwapchainKHR(device, swapChain, nullptr);
+    vkDestroyDevice(device, nullptr);
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+    if (DEBUG::enableValidationLayers) {
+        auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)
+            vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+        if (func != nullptr) {
+            func(instance, DEBUG::debugMessenger, nullptr);
         }
     }
-
-    if (swapChain == VK_NULL_HANDLE) {
-        std::cerr << "[ Warning ] swapChain var has already been destroyed!\n";
-    } else {
-        vkDestroySwapchainKHR(device, swapChain, nullptr);
-    }
-
-    // Device is destroyed first because it relies on the instance
-    if (device == VK_NULL_HANDLE) {
-        std::cerr << "[ Warning ] device var has already been destroyed!\n";
-    } else {
-        vkDestroyDevice(device, nullptr);
-    }
-
-    if (surface == VK_NULL_HANDLE) {
-        std::cerr << "[ Warning ] surface var has already been destroyed!\n";
-    } else {
-        vkDestroySurfaceKHR(instance, surface, nullptr);
-    }
-
-    if (instance == VK_NULL_HANDLE) {
-        std::cerr << "[ Warning ] instance var has already been destroyed!\n";
-    } else {
-        vkDestroyInstance(instance, nullptr);
-    }
-
-    if (!window) {
-        std::cerr << "[ Warning ] window var has already been destroyed!\n";
-    } else {
-        SDL_DestroyWindow(window);
-    }
-
+    vkDestroyInstance(instance, nullptr);
+    SDL_DestroyWindow(window);
     SDL_Vulkan_UnloadLibrary();
     SDL_Quit();
     std::clog << "[ Notice ] Window is destroyed!\n";
@@ -434,8 +669,7 @@ VkShaderModule Window::createShaderModule(const std::vector<char>& code) {
     if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
         throw std::runtime_error("[ Error ] Shader module could not be created!\n");
     } else {
-        std::clog << "[ Notice ] Shader module successfully created!\n"
-                  << "\n";
+        std::clog << "[ Notice ] Shader module successfully created!\n";
     }
 
     return shaderModule;
