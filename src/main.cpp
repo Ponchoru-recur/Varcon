@@ -16,6 +16,7 @@
 #include "window.hpp"
 
 // TODO: Always run in release mode or it'll flag the compiler because of vkCreateInstance segmentation fault
+// This is fixed now.
 
 // All pre-values
 #define FRAME_DELAY (1000 / 60)
@@ -43,6 +44,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int /*argc*/, char* /*argv*/[]) {
         window->createImageViews();
         window->createRenderPass();
         window->createGraphicsPipeline();
+        window->createFrameBuffers();
+        window->createCommandPool();
+
     } catch (const std::runtime_error& e) {
         std::cerr << "[ Runtime ] " << e.what() << std::endl;
         return SDL_APP_FAILURE;
@@ -90,6 +94,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     window->nothing();
     // Take first time frame
     auto StartFrame = std::chrono::steady_clock::now();
+
+    // Put code here
 
     // Take last time frame
     auto EndFrame = std::chrono::steady_clock::now();

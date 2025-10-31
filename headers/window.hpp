@@ -61,6 +61,10 @@ class Window {
     void createImageViews();
     void createRenderPass();  // Tell vulkan all the attachments that's going to be used.
     void createGraphicsPipeline();
+    void createFrameBuffers();
+    void createCommandPool();
+    void createCommandBuffer();
+    void recordCommandBuffer(VkCommandBuffer commandBuffer_, uint32_t imageIndex);
 
     void nothing() {};
 
@@ -115,6 +119,18 @@ class Window {
     std::vector<const char*> extensions;
     const char* const* sdlExtensions;
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+
+    // FrameBuffers
+    std::vector<VkFramebuffer> swapChainFramebuffers;
+
+    // Command buffers
+    VkCommandPool commandPool;
+    VkCommandBuffer commandBuffer;
+
+    // Sync stuff
+    VkSemaphore imageAvailableSemaphore;  // GPU <-> GPU gives a signal if a certain process is done.
+    VkSemaphore renderFinishedSemaphore;
+    VkFence inFlightFence;  // GPU -> CPU gives a signal to the CPU that the GPU is done with something.
 };
 
 }  // namespace Game
